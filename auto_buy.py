@@ -13,8 +13,11 @@ from selenium import webdriver
 import datetime
 import time
 
-#创建浏览器对象
-driver = webdriver.Chrome()
+#create browser object
+#disable error log output
+options= webdriver.ChromeOptions()
+options.add_argument('--log-level=3')
+driver = webdriver.Chrome(chrome_options=options)
 #窗口最大化显示
 driver.maximize_window()
 
@@ -40,6 +43,8 @@ def login(url,mall):
     time.sleep(30)
     
 def buy(buy_time,mall):
+    print("开始操作")
+    print("开始时间:" + buy_time)
     '''
     购买函数
     
@@ -56,18 +61,21 @@ def buy(buy_time,mall):
         btn_order='#submitOrder_1 > div.wrapper > a'
     else:
         btn_buy='#J_LinkBuy'
+        # btn_buy='#J_LinkBasket'
         btn_order='#submitOrder_1 > div > a'
         
     while True:
         #现在时间大于预设时间则开售抢购
         if datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')>buy_time:
             try:
+                print("尝试下单...")
                 #找到“立即购买”，点击
                 if driver.find_element_by_css_selector(btn_buy):
                     driver.find_element_by_css_selector(btn_buy).click()
                     break
                 time.sleep(0.1)
             except:
+                print("下单错误...")
                 time.sleep(0.3)
     
     while True:
@@ -76,7 +84,7 @@ def buy(buy_time,mall):
             if driver.find_element_by_css_selector(btn_order):
                 driver.find_element_by_css_selector(btn_order).click()
                 #下单成功，跳转至支付页面
-                print("购买成功")
+                print("操作成功")
                 break
         except:
             time.sleep(0.5)
