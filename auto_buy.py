@@ -13,30 +13,30 @@ from selenium import webdriver
 import datetime
 import time
 import json
-import re
 import threading
 import signal
 
 force_quit = False
 
 def sig_handle(signum, frame):
-    print("Got signal")
+    print("Got signal...")
+    global force_quit
     force_quit = True
 
 # good class
 class Goods:
-    url=""
-    mall_type=0
-    start_time=""
+    url = ""
+    mall_type = ''
+    start_time = ""
 
     def __init__(self, _url, _mall_type_str, _start_time):
         self.url = _url
-        self.mall_type = 1 if _mall_type_str=="taobao" else 2
+        self.mall_type = _mall_type_str
         self.start_time = _start_time
     
     def __show__(self):
         print("---url: " + self.url)
-        print("---mall type: %d"%(self.mall_type) )
+        print("---mall type:" + str(self.mall_type) )
         print("---start time: " + self.start_time)
 
 # worker load class
@@ -56,10 +56,10 @@ class Worker_load (threading.Thread):
         # main mission
     def main_mission(self, _goods):
         #create browser object and disable error log output
-        options= webdriver.ChromeOptions()
+        options = webdriver.ChromeOptions()
         options.add_argument('--log-level=3')
         driver = webdriver.Chrome(chrome_options=options)
-        # driver.maximize_window()
+        driver.maximize_window()
 
         print("start a purchase thread, start to go at %s"%(_goods.start_time))
 
@@ -91,8 +91,7 @@ class Worker_load (threading.Thread):
             driver.find_element_by_link_text("请登录").click()
 
         print("please login in in 30 seconds:")
-        _counter = 30
-        time.sleep(30)
+        time.sleep(15)
 
     # purchase func
     def buy(self, buy_time,mall,driver):
@@ -104,40 +103,55 @@ class Worker_load (threading.Thread):
 
         css_selector to find target button
         '''
+
         if mall=='1':
             #"立即购买"的css_selector
             btn_buy='#J_juValid > div.tb-btn-buy > a'
             #"立即下单"的css_selector
             btn_order='#submitOrder_1 > div.wrapper > a'
         else:
-            # btn_buy='#J_LinkBuy'
-            btn_buy='#J_LinkBasket'
+            btn_buy='#J_LinkBuy'
+            # btn_buy='#J_LinkBasket'
             btn_order='#submitOrder_1 > div > a'
+        
+        # dead loop until given starting time
+        while not force_quit:
+            if datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') < buy_time:
+                print("Starting time is " + buy_time + ",current time is " + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ", retry in next second")
+                time.sleep(1)
+            else:
+                break
 
-        while True and not force_quit:
-            #现在时间大于预设时间则开售抢购
-            if datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')>buy_time:
-                try:
-                    print("try add to shopping cart...")
-                    #找到“立即购买”，点击
-                    if driver.find_element_by_css_selector(btn_buy):
-                        driver.find_element_by_css_selector(btn_buy).click()
-                        break
-                    time.sleep(0.1)
-                except:
-                    print("add error...")
-                    time.sleep(0.3)
+        # try purchasing for 10 times every sec
+        while not force_quit:
+            try:
+                print("try process...")
+                #找到“立即购买”，点击
+                if driver.find_element_by_css_selector(btn_buy):
+                    driver.find_element_by_css_selector(btn_buy).click()
+                    break
+                else:
+                    # refresh if target button is not detected 
+                    print("No button available, retry...")
+                    driver.refresh()
+            except:
+                print("add error, retry...")
+                driver.refresh()
+            
+            time.sleep(0.1)
 
-        while True and not force_quit:
+        while not force_quit:
             try:
                 #找到“立即下单”，点击，
                 if driver.find_element_by_css_selector(btn_order):
                     driver.find_element_by_css_selector(btn_order).click()
                     #下单成功，跳转至支付页面
                     print("operation done...")
-                    break
+                    while not force_quit:
+                        time.sleep(1)
+                        continue
             except:
-                time.sleep(0.5)
+                time.sleep(1)
     
 
 # json parser
@@ -167,13 +181,17 @@ def json_parse_one(_cur_dict, _goods_list, _global_start_time):
     _ret_url = _cur_dict['url']
 
     # parse web store according to url
-    matchObj = re.match('taobao', _ret_url)
-    if matchObj:
-        _ret_estore_type = 1
+    # matchObj = re.match(r'taobao', _ret_url, re.M|re.I)
+    # if matchObj:
+    if _ret_url.find("taobao") != -1:
+        print("taobao url detected")
+        _ret_estore_type = '1'
     
-    matchObj = re.match('tmall', _ret_url)
-    if matchObj:
-        _ret_estore_type = 2
+    # matchObj = re.match(r'tmall', _ret_url, re.M|re.I)
+    # if matchObj:
+    if _ret_url.find("tmall") != -1:
+        print("tmall url detected")
+        _ret_estore_type = '2'
 
     # parse start time if needed
 
@@ -195,9 +213,6 @@ if __name__ == "__main__":
 
     goods_list = json_parser(json_file_path)
 
-    signal.signal(signal.SIGINT, sig_handle)
-    signal.signal(signal.SIGTERM, sig_handle)
-
     _counter = 0
     for goods in goods_list:
         print("[item#%d]"%(_counter))
@@ -206,11 +221,18 @@ if __name__ == "__main__":
         worker_item = Worker_load(_counter, "item" + str(_counter), _counter, goods)
         workers_pool.append(worker_item)
 
+    signal.signal(signal.SIGINT, sig_handle)
+
+    # start worker
     for worker in workers_pool:
         worker.start()
 
-    for worker in workers_pool:
-        worker.join()
+    while not force_quit:
+        time.sleep(0.1)
+        continue
+
+    # for worker in workers_pool:
+    #     worker.join()
 
         
     
